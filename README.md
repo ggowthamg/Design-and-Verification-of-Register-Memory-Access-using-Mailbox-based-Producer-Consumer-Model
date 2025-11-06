@@ -62,26 +62,33 @@ This experiment demonstrates **inter-process synchronization and data transfer**
 
 ### Design File — `register_memory.sv`
 ```systemverilog
-//=====================================================
-// Design: Register Memory Model
-//=====================================================
-module register_memory #(parameter WIDTH = 8, DEPTH = 8) ();
+module register_memory #(parameter WIDTH = 8, DEPTH = 8);
 
     // Register memory declaration
     logic [WIDTH-1:0] mem [0:DEPTH-1];
 
     // Write task
-  
+    task write(input int addr, input logic [WIDTH-1:0] data);
+        if (addr < DEPTH) begin
+            mem[addr] = data;
+            $display("[%0t] MEM: Wrote %0d at address %0d", $time, data, addr);
+        end else
+            $display("Write Error: Address %0d out of range!", addr);
+    endtask
 
     // Read task
-    
+    task read(input int addr, output logic [WIDTH-1:0] data);
+        if (addr < DEPTH) begin
+            data = mem[addr];
+            $display("[%0t] MEM: Read %0d from address %0d", $time, data, addr);
+        end else
+            $display("Read Error: Address %0d out of range!", addr);
+    endtask
+
 endmodule
 ```
 ### Testbench File
 ```
-//=====================================================
-// Testbench: Producer-Consumer using Mailbox
-//=====================================================
 module register_memory_tb;
 
     // Parameter definitions
@@ -91,18 +98,50 @@ module register_memory_tb;
     // Mailbox declaration
     mailbox mbx = new();
 
-    // Instantiate Register Memory
+    // Instantiate Register Memory (DUT)
     register_memory #(WIDTH, DEPTH) regmem();
 
-    
+    // Producer task — writes random data to mailbox
+    task producer();
+        int i;
+        logic [WIDTH-1:0] data;
+      for (i = 0; i < 4; i++) begin
+            data = $urandom_range(0, 255);
+            $display("[%0t] PRODUCER: Generated data = %0d", $time, data);
+            mbx.put(data);
+            #5; // simulate some delay
+        end
+    endtask
+
+    // Consumer task — reads from mailbox and writes to memory
+    task consumer();
+        int i;
+        logic [WIDTH-1:0] data;
+      for (i = 0; i < 4; i++) begin
+            mbx.get(data);
+            $display("[%0t] CONSUMER: Received data = %0d", $time, data);
+            regmem.write(i, data);
+            #10;
+        end
+
+        // After all writes, read back for verification
+        $display("\n--- Memory Readback ---");
+      for (i = 0; i < 4; i++) begin
+            regmem.read(i, data);
+            $display("[%0t] READBACK[%0d] = %0d", $time, i, data);
+        end
+    endtask
+  
+    initial begin
         fork
             producer();
             consumer();
-        join_any
+        join
         #50 $finish;
     end
 
 endmodule
+
 ```
 ### Simulation Output
 
